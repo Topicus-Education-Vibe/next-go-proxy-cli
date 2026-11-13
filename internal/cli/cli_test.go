@@ -326,3 +326,37 @@ func TestRefusesOldGo(t *testing.T) {
 		}
 	}
 }
+
+// Phase 2 acceptance: after a prefix is added to NGP_PRIVATE_PREFIXES,
+// 'ngp status' warns and 'ngp update' adds it to GONOSUMDB.
+func TestNewPrivatePrefixStatusWarnsUpdateAdds(t *testing.T) {
+	f := newFake(t)
+	a := newApp(t, f)
+	c := &credentials.Credentials{Server: f.srv.URL, ProxyURL: f.srv.URL, Token: "ngp_u_valid", ExpiresAt: time.Now().Add(time.Hour)}
+	if err := credentials.Save(a.CredPath, c); err != nil {
+		t.Fatal(err)
+	}
+	if code := a.run(t, "update"); code != 0 {
+		t.Fatalf("first update exit %d: %s", code, a.errOut)
+	}
+	if a.run(t, "status"); !strings.Contains(a.out.String(), "Go env: up to date") {
+		t.Fatalf("status before new prefix: %s", a.out)
+	}
+
+	f.mu.Lock()
+	f.prefixes = append(f.prefixes, "github.com/acme-two/")
+	f.mu.Unlock()
+
+	if a.run(t, "status"); !strings.Contains(a.out.String(), "out of date (GONOSUMDB); run 'ngp update'") {
+		t.Errorf("status does not warn about the new prefix: %s", a.out)
+	}
+	if code := a.run(t, "update"); code != 0 {
+		t.Fatalf("update exit %d: %s", code, a.errOut)
+	}
+	if got := goEnv(t, "GONOSUMDB"); got != "github.com/acme,github.com/acme-two" {
+		t.Errorf("GONOSUMDB after update = %q", got)
+	}
+	if a.run(t, "status"); !strings.Contains(a.out.String(), "Go env: up to date") {
+		t.Errorf("status after update: %s", a.out)
+	}
+}
