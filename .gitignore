@@ -1,0 +1,16 @@
+# build output
+dist/
+/ngp
+/ngp.exe
+*.test
+*.out
+
+# local env and credentials
+.env
+.env.*
+credentials.json
+
+# editors and OS
+.idea/
+.vscode/
+.DS_Store
