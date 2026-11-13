@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,14 +23,15 @@ import (
 
 // fake is next-go-proxy and its OIDC provider in one TLS test server.
 type fake struct {
-	srv      *httptest.Server
-	mu       sync.Mutex
-	prefixes []string
-	minCLI   string
-	issued   []string
-	revoked  map[string]bool
-	exchange []v1.ExchangeRequest
-	tokenReq []map[string][]string // form posted to the token endpoint
+	srv       *httptest.Server
+	mu        sync.Mutex
+	prefixes  []string
+	minCLI    string
+	issued    []string
+	revoked   map[string]bool
+	exchange  []v1.ExchangeRequest
+	tokenReq  []url.Values // form posted to the token endpoint
+	deviceReq []url.Values // form posted to the device authorization endpoint
 }
 
 func newFake(t *testing.T) *fake {
@@ -52,6 +54,10 @@ func newFake(t *testing.T) *fake {
 		})
 	})
 	mux.HandleFunc("POST /oidc/device", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		f.mu.Lock()
+		f.deviceReq = append(f.deviceReq, r.PostForm)
+		f.mu.Unlock()
 		writeJSON(w, 200, map[string]any{
 			"device_code": "dc", "user_code": "ABCD-EFGH", "verification_uri": issuer + "/activate",
 			"expires_in": 60, "interval": 1,
@@ -67,7 +73,7 @@ func newFake(t *testing.T) *fake {
 			writeJSON(w, 400, map[string]string{"error": "authorization_pending"})
 			return
 		}
-		writeJSON(w, 200, map[string]any{"access_token": "at", "token_type": "Bearer", "expires_in": 3600, "id_token": "the-id-token"})
+		writeJSON(w, 200, map[string]any{"access_token": "the-access-token", "token_type": "Bearer", "expires_in": 3600})
 	})
 	mux.HandleFunc("GET "+v1.PathClientConfig, func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -80,8 +86,8 @@ func newFake(t *testing.T) *fake {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.exchange = append(f.exchange, req)
-		if req.IDToken != "the-id-token" {
-			writeJSON(w, 401, v1.Error{Code: v1.ErrInvalidIDToken, Message: "bad id token"})
+		if req.AccessToken != "the-access-token" {
+			writeJSON(w, 401, v1.Error{Code: v1.ErrInvalidAccessToken, Message: "bad access token"})
 			return
 		}
 		tok := v1.UserTokenPrefix + strings.Repeat("a", 40) + string(rune('a'+len(f.issued)))
@@ -153,11 +159,14 @@ func TestLoginGoauthStatusLogout(t *testing.T) {
 	if !strings.Contains(a.out.String(), "ABCD-EFGH") {
 		t.Errorf("user code not shown: %s", a.out)
 	}
-	// Public client: client_id in the body, never a client secret.
-	for _, form := range f.tokenReq {
-		if form["client_id"][0] != "ngp-cli" || form["client_secret"] != nil {
-			t.Errorf("token request form: %v", form)
+	// Public client: client_id in the body, never a client secret; resource = public_url on both requests.
+	for _, form := range append(f.deviceReq, f.tokenReq...) {
+		if form.Get("client_id") != "ngp-cli" || form["client_secret"] != nil || form.Get("resource") != f.srv.URL {
+			t.Errorf("request form: %v", form)
 		}
+	}
+	if got := f.deviceReq[0].Get("scope"); got != "openid profile email" {
+		t.Errorf("scope = %q", got)
 	}
 	if len(f.exchange) != 1 || f.exchange[0].DeviceName == "" {
 		t.Fatalf("exchange requests: %+v", f.exchange)

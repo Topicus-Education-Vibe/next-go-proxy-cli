@@ -34,6 +34,7 @@ type ClientConfig struct {
 	// PublicURL is the proxy URL clients put in GOPROXY, without trailing slash.
 	PublicURL string `json:"public_url"`
 	// Issuer is the OIDC issuer; the CLI uses <Issuer>/.well-known/openid-configuration.
+	// PublicURL is also the RFC 8707 resource the CLI requests the access token for.
 	Issuer string `json:"issuer"`
 	// CLIClientID is the public OIDC client used for the device flow.
 	CLIClientID string `json:"cli_client_id"`
@@ -48,8 +49,10 @@ const MaxDeviceNameLength = 128
 
 // ExchangeRequest is the body of POST PathExchange.
 type ExchangeRequest struct {
-	// IDToken is the KeyHub ID token from the device flow; its audience must be CLIClientID.
-	IDToken string `json:"id_token"`
+	// AccessToken is a KeyHub RFC 9068 JWT access token from the device flow, requested
+	// with resource = ClientConfig.PublicURL and scope "openid profile email". The server
+	// checks typ at+jwt, iss, aud == PublicURL, client_id == CLIClientID and expiry.
+	AccessToken string `json:"access_token"`
 	// DeviceName identifies the laptop in the token list, e.g. the hostname.
 	DeviceName string `json:"device_name"`
 }
@@ -74,12 +77,12 @@ func (e *Error) Error() string { return string(e.Code) + ": " + e.Message }
 type ErrorCode string
 
 const (
-	ErrInvalidRequest ErrorCode = "invalid_request"  // 400: malformed body or field
-	ErrInvalidIDToken ErrorCode = "invalid_id_token" // 401: exchange with a bad, expired or wrong-audience ID token
-	ErrUnauthorized   ErrorCode = "unauthorized"     // 401: missing, unknown, expired or revoked token
-	ErrForbidden      ErrorCode = "forbidden"        // 403: token type may not perform this action (e.g. ngp_k_ on logout)
-	ErrRateLimited    ErrorCode = "rate_limited"     // 429: too many failed authentications
-	ErrInternal       ErrorCode = "internal"         // 500
+	ErrInvalidRequest     ErrorCode = "invalid_request"      // 400: malformed body or field
+	ErrInvalidAccessToken ErrorCode = "invalid_access_token" // 401: exchange with a bad, expired, wrong-audience or wrong-client access token
+	ErrUnauthorized       ErrorCode = "unauthorized"         // 401: missing, unknown, expired or revoked token
+	ErrForbidden          ErrorCode = "forbidden"            // 403: token type may not perform this action (e.g. ngp_k_ on logout)
+	ErrRateLimited        ErrorCode = "rate_limited"         // 429: too many failed authentications
+	ErrInternal           ErrorCode = "internal"             // 500
 )
 
 // Plain-text 401 bodies of the GOPROXY endpoints; go shows them to the user.

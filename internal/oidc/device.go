@@ -13,7 +13,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// Scopes requested in the device flow; the ID token must carry the email claim.
+// Scopes requested in the device flow; email lets the server read it from userinfo.
 var Scopes = []string{"openid", "profile", "email"}
 
 // Provider holds the endpoints from the discovery document.
@@ -51,9 +51,10 @@ func Discover(ctx context.Context, hc *http.Client, issuer string) (*Provider, e
 	return &p, nil
 }
 
-// DeviceLogin runs the device flow for a public client and returns the ID token.
+// DeviceLogin runs the device flow for a public client and returns the access token,
+// requested for resource (RFC 8707) so KeyHub issues an RFC 9068 JWT with aud = resource.
 // prompt is called once with the code the user has to confirm in the browser.
-func DeviceLogin(ctx context.Context, hc *http.Client, p *Provider, clientID string, prompt func(*oauth2.DeviceAuthResponse)) (string, error) {
+func DeviceLogin(ctx context.Context, hc *http.Client, p *Provider, clientID, resource string, prompt func(*oauth2.DeviceAuthResponse)) (string, error) {
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
 	cfg := &oauth2.Config{
 		ClientID: clientID,
@@ -64,18 +65,18 @@ func DeviceLogin(ctx context.Context, hc *http.Client, p *Provider, clientID str
 			AuthStyle:     oauth2.AuthStyleInParams, // public client: client_id in the body, no secret
 		},
 	}
-	da, err := cfg.DeviceAuth(ctx)
+	res := oauth2.SetAuthURLParam("resource", resource)
+	da, err := cfg.DeviceAuth(ctx, res)
 	if err != nil {
 		return "", fmt.Errorf("device authorization: %w", err)
 	}
 	prompt(da)
-	tok, err := cfg.DeviceAccessToken(ctx, da)
+	tok, err := cfg.DeviceAccessToken(ctx, da, res)
 	if err != nil {
 		return "", fmt.Errorf("device token: %w", err)
 	}
-	id, _ := tok.Extra("id_token").(string)
-	if id == "" {
-		return "", errors.New("device token: provider returned no id_token (is the openid scope allowed?)")
+	if tok.AccessToken == "" {
+		return "", errors.New("device token: provider returned no access token")
 	}
-	return id, nil
+	return tok.AccessToken, nil
 }

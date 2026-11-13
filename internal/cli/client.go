@@ -128,9 +128,9 @@ func (c *apiClient) clientConfig(ctx context.Context) (*v1.ClientConfig, error) 
 	return &cc, nil
 }
 
-func (c *apiClient) exchange(ctx context.Context, idToken, device string) (*v1.ExchangeResponse, error) {
+func (c *apiClient) exchange(ctx context.Context, accessToken, device string) (*v1.ExchangeResponse, error) {
 	var resp v1.ExchangeResponse
-	err := c.do(ctx, http.MethodPost, v1.PathExchange, "", v1.ExchangeRequest{IDToken: idToken, DeviceName: device}, &resp)
+	err := c.do(ctx, http.MethodPost, v1.PathExchange, "", v1.ExchangeRequest{AccessToken: accessToken, DeviceName: device}, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange: %w", err)
 	}

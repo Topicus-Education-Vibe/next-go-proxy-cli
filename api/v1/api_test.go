@@ -21,8 +21,8 @@ func TestWireFormat(t *testing.T) {
 		}, `{"public_url":"https://p","issuer":"https://i","cli_client_id":"c","private_prefixes":["github.com/a/"],"min_cli_version":"v0.1.0"}`},
 		{"client-config without min version", ClientConfig{PublicURL: "https://p"},
 			`{"public_url":"https://p","issuer":"","cli_client_id":"","private_prefixes":null}`},
-		{"exchange request", ExchangeRequest{IDToken: "x", DeviceName: "laptop"},
-			`{"id_token":"x","device_name":"laptop"}`},
+		{"exchange request", ExchangeRequest{AccessToken: "x", DeviceName: "laptop"},
+			`{"access_token":"x","device_name":"laptop"}`},
 		{"exchange response", ExchangeResponse{Token: "ngp_u_x", ExpiresAt: exp},
 			`{"token":"ngp_u_x","expires_at":"2026-12-13T10:00:00Z"}`},
 		{"error", Error{Code: ErrUnauthorized, Message: "m"},
@@ -42,12 +42,12 @@ func TestWireFormat(t *testing.T) {
 }
 
 func TestErrorIsError(t *testing.T) {
-	var err error = &Error{Code: ErrInvalidIDToken, Message: "expired"}
+	var err error = &Error{Code: ErrInvalidAccessToken, Message: "expired"}
 	var apiErr *Error
-	if !errors.As(err, &apiErr) || apiErr.Code != ErrInvalidIDToken {
+	if !errors.As(err, &apiErr) || apiErr.Code != ErrInvalidAccessToken {
 		t.Fatalf("errors.As failed: %v", err)
 	}
-	if err.Error() != "invalid_id_token: expired" {
+	if err.Error() != "invalid_access_token: expired" {
 		t.Errorf("Error() = %q", err.Error())
 	}
 }

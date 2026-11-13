@@ -64,11 +64,11 @@ func (a *App) login(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	idToken, err := oidc.DeviceLogin(ctx, a.HTTP, p, cc.CLIClientID, a.showDeviceCode)
+	accessToken, err := oidc.DeviceLogin(ctx, a.HTTP, p, cc.CLIClientID, cc.PublicURL, a.showDeviceCode)
 	if err != nil {
 		return err
 	}
-	res, err := api.exchange(ctx, idToken, deviceName())
+	res, err := api.exchange(ctx, accessToken, deviceName())
 	if err != nil {
 		return err
 	}
