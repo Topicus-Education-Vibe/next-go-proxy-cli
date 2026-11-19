@@ -10,7 +10,7 @@ import (
 // Paths of the JSON API, relative to the server's public URL.
 const (
 	PathClientConfig = "/api/v1/client-config" // GET, no authentication
-	PathExchange     = "/api/v1/auth/exchange" // POST ExchangeRequest, no authentication (carries a KeyHub ID token)
+	PathExchange     = "/api/v1/auth/exchange" // POST ExchangeRequest, no authentication (carries a KeyHub access token)
 	PathLogout       = "/api/v1/auth/logout"   // POST, Authorization: Bearer ngp_u_..., no body; 204 on success
 )
 
