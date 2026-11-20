@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	v1 "github.com/Topicus-Education-Vibe/next-go-proxy-cli/api/v1"
 	"github.com/Topicus-Education-Vibe/next-go-proxy-cli/internal/credentials"
@@ -37,7 +39,12 @@ func resolveServer(flagValue string, c *credentials.Credentials) (string, error)
 func (a *App) login(ctx context.Context, args []string) error {
 	fs := a.flags("login")
 	server := fs.String("server", "", "next-go-proxy URL, e.g. https://ngp.example.nl (default: $NGP_SERVER or the last server)")
+	device := fs.String("device-name", "", "name of this machine on the proxy's \"My tokens\" page (default: $NGP_DEVICE_NAME or the hostname)")
 	if err := a.parse(fs, args); err != nil {
+		return err
+	}
+	name, err := deviceName(*device)
+	if err != nil {
 		return err
 	}
 	env, err := a.Go.Read(ctx) // fails early on Go < 1.24
@@ -68,7 +75,7 @@ func (a *App) login(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := api.exchange(ctx, accessToken, deviceName())
+	res, err := api.exchange(ctx, accessToken, name)
 	if err != nil {
 		return err
 	}
@@ -93,15 +100,37 @@ func (a *App) showDeviceCode(da *oauth2.DeviceAuthResponse) {
 	fmt.Fprintln(a.Stdout, "Waiting for confirmation...")
 }
 
-func deviceName() string {
+// deviceName picks the device name: the --device-name flag, $NGP_DEVICE_NAME, then the hostname.
+// A name that is given is checked against the server's rules before the login starts, so a typo
+// in a setup script fails at once instead of after the browser step; the hostname is cut to fit.
+func deviceName(flagValue string) (string, error) {
+	given, from := flagValue, "--device-name"
+	if given == "" {
+		given, from = os.Getenv("NGP_DEVICE_NAME"), "NGP_DEVICE_NAME"
+	}
+	if given != "" {
+		if !validDeviceName(given) {
+			return "", fmt.Errorf("%s: must be 1 to %d bytes of UTF-8 without control characters", from, v1.MaxDeviceNameLength)
+		}
+		return given, nil
+	}
 	h, err := os.Hostname()
-	if err != nil || h == "" {
-		return "unknown"
+	if err != nil || strings.TrimSpace(h) == "" {
+		return "unknown", nil
 	}
 	if len(h) > v1.MaxDeviceNameLength {
-		h = h[:v1.MaxDeviceNameLength]
+		h = strings.ToValidUTF8(h[:v1.MaxDeviceNameLength], "")
 	}
-	return h
+	return h, nil
+}
+
+// validDeviceName mirrors the server's check: valid UTF-8, not blank, at most MaxDeviceNameLength
+// bytes, and no control or format characters (bidi, zero width).
+func validDeviceName(s string) bool {
+	if len(s) > v1.MaxDeviceNameLength || !utf8.ValidString(s) || strings.TrimSpace(s) == "" {
+		return false
+	}
+	return !strings.ContainsFunc(s, func(r rune) bool { return unicode.In(r, unicode.Cc, unicode.Cf) })
 }
 
 func (a *App) update(ctx context.Context, args []string) error {

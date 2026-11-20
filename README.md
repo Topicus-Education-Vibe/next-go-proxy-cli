@@ -23,13 +23,15 @@ go get github.com/<org>/<repo>@latest
 
 | Command | What it does |
 | --- | --- |
-| `ngp login [--server URL]` | Log in with KeyHub (device flow), store a token, configure `go` |
+| `ngp login [--server URL] [--device-name NAME]` | Log in with KeyHub (device flow), store a token, configure `go`. The device name (default `$NGP_DEVICE_NAME`, then the hostname) is shown on the proxy's "My tokens" page |
 | `ngp update` | Re-apply the server's Go settings, e.g. after a new organization was added |
 | `ngp status` | Show login state and token expiry; warn when the Go environment is out of date |
 | `ngp logout` | Revoke the token on the server and delete local credentials |
 | `ngp goauth` | Credential helper, called by the go command (`GOAUTH`) |
 
 The server URL is remembered; `$NGP_SERVER` works too.
+
+`ngp login` needs no terminal: it prints the KeyHub URL and code on stdout and waits until the code is confirmed or expires. Without a terminal it asks nothing and only warns about `GOPRIVATE`/`GONOPROXY` patterns that bypass the proxy.
 
 ## What ngp changes in your Go environment
 

@@ -116,7 +116,7 @@ type testApp struct {
 func newApp(t *testing.T, f *fake) *testApp {
 	t.Setenv("GOENV", filepath.Join(t.TempDir(), "go.env"))
 	t.Setenv("GOTOOLCHAIN", "local")
-	for _, k := range []string{"GOPROXY", "GOAUTH", "GONOSUMDB", "GOPRIVATE", "GONOPROXY", "GOFLAGS", "NGP_SERVER"} {
+	for _, k := range []string{"GOPROXY", "GOAUTH", "GONOSUMDB", "GOPRIVATE", "GONOPROXY", "GOFLAGS", "NGP_SERVER", "NGP_DEVICE_NAME"} {
 		t.Setenv(k, "")
 	}
 	ta := &testApp{out: &bytes.Buffer{}, errOut: &bytes.Buffer{}}
@@ -359,4 +359,70 @@ func TestNewPrivatePrefixStatusWarnsUpdateAdds(t *testing.T) {
 	if a.run(t, "status"); !strings.Contains(a.out.String(), "Go env: up to date") {
 		t.Errorf("status after update: %s", a.out)
 	}
+}
+
+func TestLogin_DeviceName(t *testing.T) {
+	for name, tc := range map[string]struct {
+		flag, env, want string
+	}{
+		"flag wins":       {flag: "dev-box arjen/next", env: "from-env", want: "dev-box arjen/next"},
+		"env":             {env: "dev-box arjen/blueprint", want: "dev-box arjen/blueprint"},
+		"hostname":        {want: hostname(t)},
+		"utf-8 and slash": {flag: "dev-box ärjen/wörk", want: "dev-box ärjen/wörk"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFake(t)
+			a := newApp(t, f)
+			t.Setenv("NGP_DEVICE_NAME", tc.env)
+			args := []string{"login", "--server", f.srv.URL}
+			if tc.flag != "" {
+				args = append(args, "--device-name", tc.flag)
+			}
+			if code := a.run(t, args...); code != 0 {
+				t.Fatalf("login exit %d: %s", code, a.errOut)
+			}
+			if len(f.exchange) != 1 || f.exchange[0].DeviceName != tc.want {
+				t.Fatalf("exchange requests: %+v, want device %q", f.exchange, tc.want)
+			}
+		})
+	}
+}
+
+// A bad name fails before the device flow starts, so nobody confirms a code in vain.
+func TestLogin_InvalidDeviceNameFailsBeforeDeviceFlow(t *testing.T) {
+	for name, tc := range map[string]struct{ flag, env string }{
+		"blank flag":    {flag: "   "},
+		"too long":      {flag: strings.Repeat("x", 129)},
+		"control char":  {flag: "dev\nbox"},
+		"bidi override": {env: "dev\u202ebox"},
+		"invalid utf-8": {env: "dev\xffbox"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFake(t)
+			a := newApp(t, f)
+			t.Setenv("NGP_DEVICE_NAME", tc.env)
+			args := []string{"login", "--server", f.srv.URL}
+			if tc.flag != "" {
+				args = append(args, "--device-name", tc.flag)
+			}
+			if code := a.run(t, args...); code == 0 {
+				t.Fatal("login succeeded with an invalid device name")
+			}
+			if len(f.deviceReq) != 0 || len(f.exchange) != 0 {
+				t.Errorf("device flow started: %d device requests, %d exchanges", len(f.deviceReq), len(f.exchange))
+			}
+			if !strings.Contains(a.errOut.String(), "device") && !strings.Contains(a.errOut.String(), "DEVICE") {
+				t.Errorf("error does not name the device name: %s", a.errOut)
+			}
+		})
+	}
+}
+
+func hostname(t *testing.T) string {
+	t.Helper()
+	h, err := os.Hostname()
+	if err != nil || h == "" {
+		return "unknown"
+	}
+	return h
 }
