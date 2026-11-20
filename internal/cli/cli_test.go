@@ -395,7 +395,7 @@ func TestLogin_InvalidDeviceNameFailsBeforeDeviceFlow(t *testing.T) {
 		"too long":      {flag: strings.Repeat("x", 129)},
 		"control char":  {flag: "dev\nbox"},
 		"bidi override": {env: "dev\u202ebox"},
-		"invalid utf-8": {env: "dev\xffbox"},
+		"invalid utf-8": {flag: "dev\xffbox"}, // a flag: Windows turns invalid UTF-8 in env vars into U+FFFD
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFake(t)
