@@ -43,6 +43,9 @@ Usage:
   ngp logout                 revoke the token and delete local credentials
   ngp version                print the ngp version
   ngp goauth                 credential helper, called by the go command (GOAUTH)
+
+CI and machines without a browser: set NGP_API_KEY to an API key from the
+web UI and NGP_SERVER to the proxy URL, then run 'ngp update'.
 `
 
 // Main runs ngp with the process environment and returns the exit code.

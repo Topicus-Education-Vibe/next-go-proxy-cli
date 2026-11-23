@@ -1,0 +1,45 @@
+# Manual end-to-end test of action.yml against a real next-go-proxy. Needs the repository secret
+# NGP_API_KEY: an API key from the web UI whose scope includes the module below.
+name: action-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: Private module to fetch, e.g. github.com/<org>/<repo>@latest
+        required: true
+      server:
+        description: next-go-proxy URL
+        required: false
+        default: https://goproxy.shared.ai.topicus.education
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: ./
+        with:
+          api-key: ${{ secrets.NGP_API_KEY }}
+          server: ${{ inputs.server }}
+          version: ${{ github.sha }}
+      - name: Fetch the private module through the proxy
+        shell: bash
+        env:
+          MODULE: ${{ inputs.module }}
+        run: |
+          set -euo pipefail
+          ngp status
+          cd "$(mktemp -d)"
+          go mod init example.com/actiontest
+          go get "${MODULE}"
+          go list -m all

@@ -1,0 +1,76 @@
+name: next-go-proxy
+description: Point go at next-go-proxy with an API key, so a job can fetch private modules.
+author: Topicus Education
+branding:
+  icon: download-cloud
+  color: blue
+
+inputs:
+  api-key:
+    description: An ngp_k_ API key from the next-go-proxy web UI ("API keys"). Pass it from a secret.
+    required: true
+  server:
+    description: URL of next-go-proxy.
+    required: false
+    default: https://goproxy.shared.ai.topicus.education
+  version:
+    description: ngp version to install. Default is the version of this action (its tag), else latest.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Set up ngp
+      shell: bash
+      env:
+        NGP_INPUT_KEY: ${{ inputs.api-key }}
+        NGP_INPUT_SERVER: ${{ inputs.server }}
+        NGP_INPUT_VERSION: ${{ inputs.version }}
+        NGP_ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        echo "::add-mask::${NGP_INPUT_KEY}"
+        # Strict patterns: both values go into GITHUB_ENV, so a newline must never get through.
+        if ! [[ "${NGP_INPUT_KEY}" =~ ^ngp_k_[A-Za-z0-9_-]{43}$ ]]; then
+          echo "::error::api-key must be an ngp_k_ key from the next-go-proxy web UI (API keys)"
+          exit 1
+        fi
+        if ! [[ "${NGP_INPUT_SERVER}" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$ ]]; then
+          echo "::error::server must be an https:// URL without a path"
+          exit 1
+        fi
+        if ! command -v go >/dev/null; then
+          echo "::error::go is not installed; run actions/setup-go before this action"
+          exit 1
+        fi
+
+        version="${NGP_INPUT_VERSION}"
+        if [ -z "${version}" ]; then
+          case "${NGP_ACTION_REF}" in
+            v[0-9]*) version="${NGP_ACTION_REF}" ;;
+            *) version=latest ;;
+          esac
+        fi
+        if ! [[ "${version}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::version must be a tag, commit or latest"
+          exit 1
+        fi
+        # go install checks the module against sum.golang.org; GOPROXY is not changed yet.
+        bin="${RUNNER_TEMP}/ngp-bin"
+        GOBIN="${bin}" go install "github.com/Topicus-Education-Vibe/next-go-proxy-cli/cmd/ngp@${version}"
+        ngp="${bin}/ngp$(go env GOEXE)"
+        echo "${bin}" >> "${GITHUB_PATH}"
+
+        # Later steps run go, which asks ngp goauth for the key (GOAUTH).
+        {
+          echo "NGP_API_KEY=${NGP_INPUT_KEY}"
+          echo "NGP_SERVER=${NGP_INPUT_SERVER}"
+        } >> "${GITHUB_ENV}"
+        export NGP_API_KEY="${NGP_INPUT_KEY}" NGP_SERVER="${NGP_INPUT_SERVER}"
+
+        "${ngp}" version
+        "${ngp}" update
+        echo "GOPROXY=$(go env GOPROXY)"
+        echo "GOAUTH=$(go env GOAUTH)"
+        echo "GONOSUMDB=$(go env GONOSUMDB)"

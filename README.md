@@ -27,11 +27,44 @@ go get github.com/<org>/<repo>@latest
 | `ngp update` | Re-apply the server's Go settings, e.g. after a new organization was added |
 | `ngp status` | Show login state and token expiry; warn when the Go environment is out of date |
 | `ngp logout` | Revoke the token on the server and delete local credentials |
-| `ngp goauth` | Credential helper, called by the go command (`GOAUTH`) |
+| `ngp goauth` | Credential helper, called by the go command (`GOAUTH`); uses `$NGP_API_KEY` when set |
 
 The server URL is remembered; `$NGP_SERVER` works too.
 
 `ngp login` needs no terminal: it prints the KeyHub URL and code on stdout and waits until the code is confirmed or expires. Without a terminal it asks nothing and only warns about `GOPRIVATE`/`GONOPROXY` patterns that bypass the proxy.
+
+## CI and machines without a browser
+
+Create an API key in the next-go-proxy web UI (**API keys**). A key is scoped to chosen modules (or all), always expires, and can be rotated or revoked there.
+
+### GitHub Actions
+
+Store the key as secret `NGP_API_KEY` and add this action after `actions/setup-go`:
+
+```yaml
+- uses: actions/setup-go@v5
+  with:
+    go-version: stable
+- uses: Topicus-Education-Vibe/next-go-proxy-cli@v0.4.0
+  with:
+    api-key: ${{ secrets.NGP_API_KEY }}
+    # server: https://goproxy.shared.ai.topicus.education   (default)
+- run: go build ./...
+```
+
+The action installs `ngp` (with `go install`, checked against sum.golang.org), puts `NGP_API_KEY` and `NGP_SERVER` in the job environment and runs `ngp update`. Later steps run `go`, which asks `ngp goauth` for the key. The key is never written to a file. Do not set `GOPRIVATE` or `GONOPROXY` for the private organizations: `go` would then skip the proxy.
+
+The `action-test` workflow runs the action against the real proxy by hand (it needs the repository secret `NGP_API_KEY`).
+
+### Other machines
+
+```bash
+export NGP_API_KEY=ngp_k_...   # from a secret store
+export NGP_SERVER=https://<next-go-proxy host>
+ngp update                     # configures go; no login
+```
+
+With `NGP_API_KEY` set, `ngp goauth` hands `go` the key instead of a login token. Without `ngp`, put the key in `~/.netrc` (`machine <host> login ngp password ngp_k_...`) and set `GOPROXY` and `GONOSUMDB` yourself.
 
 ## What ngp changes in your Go environment
 

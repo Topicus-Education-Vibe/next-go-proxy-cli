@@ -20,7 +20,7 @@ const ContentTypeJSON = "application/json"
 // Token prefixes. Tokens are opaque: prefix + base64url (no padding) of 32 random bytes.
 const (
 	UserTokenPrefix = "ngp_u_" // issued by next-go-proxy via the exchange, used on laptops
-	APIKeyPrefix    = "ngp_k_" // managed in KeyHub, used in CI
+	APIKeyPrefix    = "ngp_k_" // made in the web UI (or set on the server), used in CI
 )
 
 // IsUserToken reports whether s has the user token prefix.

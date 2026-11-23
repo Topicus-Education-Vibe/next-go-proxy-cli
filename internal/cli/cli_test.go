@@ -426,3 +426,59 @@ func hostname(t *testing.T) string {
 	}
 	return h
 }
+
+const testAPIKey = "ngp_k_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"
+
+// CI flow: NGP_API_KEY and NGP_SERVER, 'ngp update' without a login, then goauth hands go the key.
+func TestAPIKeyWithoutLogin(t *testing.T) {
+	f := newFake(t)
+	a := newApp(t, f)
+	t.Setenv("NGP_API_KEY", testAPIKey)
+	t.Setenv("NGP_SERVER", f.srv.URL+"/")
+
+	if code := a.run(t, "update"); code != 0 || strings.Contains(a.out.String(), "not logged in") {
+		t.Fatalf("update exit %d: %s %s", code, a.out, a.errOut)
+	}
+	if got := goEnv(t, "GOAUTH"); got != "netrc;ngp goauth" {
+		t.Errorf("GOAUTH = %q", got)
+	}
+	want := f.srv.URL + "\n\nAuthorization: Bearer " + testAPIKey + "\n\n"
+	if a.run(t, "goauth"); a.out.String() != want {
+		t.Errorf("goauth = %q, want %q", a.out, want)
+	}
+	if code := a.run(t, "status"); code != 0 || !strings.Contains(a.out.String(), "API key from NGP_API_KEY") {
+		t.Errorf("status exit %d: %s %s", code, a.out, a.errOut)
+	}
+	if c, _ := credentials.Load(a.CredPath); c != nil {
+		t.Error("credentials written for an API key")
+	}
+}
+
+// The key wins over a login, and a malformed key or a missing server gives no credentials at all.
+func TestGoauthAPIKey(t *testing.T) {
+	f := newFake(t)
+	a := newApp(t, f)
+	err := credentials.Save(a.CredPath, &credentials.Credentials{Server: f.srv.URL, ProxyURL: f.srv.URL,
+		Token: "ngp_u_abc", ExpiresAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NGP_SERVER", "")
+	t.Setenv("NGP_API_KEY", testAPIKey)
+	if a.run(t, "goauth"); a.out.String() != f.srv.URL+"\n\nAuthorization: Bearer "+testAPIKey+"\n\n" {
+		t.Errorf("key with login: %q", a.out)
+	}
+	for name, key := range map[string]string{"user token": "ngp_u_abc", "header injection": "ngp_k_a\nX-Evil: 1"} {
+		t.Setenv("NGP_API_KEY", key)
+		if a.run(t, "goauth"); a.out.Len() != 0 {
+			t.Errorf("%s: %q", name, a.out)
+		}
+	}
+	if err := credentials.Delete(a.CredPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NGP_API_KEY", testAPIKey)
+	if a.run(t, "goauth"); a.out.Len() != 0 {
+		t.Errorf("no server: %q", a.out)
+	}
+}

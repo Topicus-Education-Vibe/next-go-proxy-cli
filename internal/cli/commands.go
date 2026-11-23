@@ -164,8 +164,8 @@ func (a *App) update(ctx context.Context, args []string) error {
 	if err := a.applyGoEnv(ctx, env, cc); err != nil {
 		return err
 	}
-	if !c.Valid(a.Now()) {
-		fmt.Fprintln(a.Stdout, "You are not logged in; run 'ngp login' before using go.")
+	if !c.Valid(a.Now()) && os.Getenv(envAPIKey) == "" {
+		fmt.Fprintln(a.Stdout, "You are not logged in; run 'ngp login' before using go, or set NGP_API_KEY.")
 	}
 	return nil
 }
@@ -243,19 +243,27 @@ func (a *App) status(ctx context.Context, args []string) error {
 		return err
 	}
 	now := a.Now()
+	var server string
 	switch {
+	case os.Getenv(envAPIKey) != "":
+		if server, err = resolveServer("", c); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.Stdout, "Server: %s\nToken:  API key from %s (go uses it instead of a login)\n", server, envAPIKey)
 	case c == nil || c.Token == "":
 		fmt.Fprintln(a.Stdout, "Not logged in; run 'ngp login --server https://<next-go-proxy host>'.")
 		return nil
 	case !c.Valid(now):
+		server = c.Server
 		fmt.Fprintf(a.Stdout, "Server: %s\nToken:  expired on %s; run 'ngp login'.\n", c.Server, c.ExpiresAt.Local().Format(time.DateTime))
 	default:
+		server = c.Server
 		days := int(c.ExpiresAt.Sub(now).Hours() / 24)
 		fmt.Fprintf(a.Stdout, "Server: %s\nToken:  valid until %s (%d days left)\n", c.Server, c.ExpiresAt.Local().Format(time.DateTime), days)
 	}
 	fmt.Fprintf(a.Stdout, "Go:     %s\n", env.GOVERSION)
 
-	cc, err := (&apiClient{hc: a.HTTP, base: c.Server}).clientConfig(ctx)
+	cc, err := (&apiClient{hc: a.HTTP, base: server}).clientConfig(ctx)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "warning: cannot check the Go environment: %v\n", err)
 		return nil
